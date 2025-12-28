@@ -25,12 +25,11 @@ jobs:
 
             IMAGE_TAG=dev-$(git rev-parse --short HEAD)
 
-            podman stop laravel_app || true
-            podman rm laravel_app || true
 
             podman build -t laravel-app:${IMAGE_TAG} .
 
             podman run -d \
+              --replace \
               --name laravel_app \
               --env-file /var/www/current/.env \
               -p 8080:80 \

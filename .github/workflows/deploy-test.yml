@@ -1,4 +1,4 @@
-name: Deploy to TEST
+name: Docker Build & Deploy to TEST
 
 on:
   push:
@@ -10,28 +10,31 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Deploy to TEST server
+      - name: Deploy on TEST server
         run: |
           ssh root@192.168.1.144 << 'EOF'
             set -e
 
-            echo "🚀 Deploying to TEST server"
+            echo "🚀 Deploying DEV to TEST"
 
-            cd /var/www/current || exit 1
+            cd /var/www/current
 
             git fetch origin
             git checkout dev
-            git pull origin dev
+            git reset --hard origin/dev
 
-            composer install --no-interaction --prefer-dist --optimize-autoloader
+            IMAGE_TAG=dev-$(git rev-parse --short HEAD)
 
-            php artisan migrate --force
-            php artisan config:clear
-            php artisan config:cache
-            php artisan route:cache
+            podman stop laravel_app || true
+            podman rm laravel_app || true
 
-            echo "✅ TEST deployment finished"
+            podman build -t laravel-app:${IMAGE_TAG} .
+
+            podman run -d \
+              --name laravel_app \
+              --env-file /var/www/current/.env \
+              -p 8080:80 \
+              laravel-app:${IMAGE_TAG}
+
+            echo "✅ TEST deployment completed"
           EOF

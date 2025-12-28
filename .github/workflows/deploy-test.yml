@@ -13,37 +13,32 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy Docker app to TEST (versioned images)
+      - name: Deploy to TEST using Podman Compose
         run: |
           SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
           IMAGE_TAG="dev-${SHORT_SHA}"
 
-          ssh root@${{ secrets.TEST_SERVER_IP }} << EOF
+          ssh root@${{ secrets.TEST_SERVER_IP }} "bash -s" << EOF
             set -e
 
             echo "🚀 Deploying IMAGE_TAG=${IMAGE_TAG}"
-
             cd /var/www/current
 
-            # Ensure clean git state (no drift)
             git fetch origin
             git checkout dev
-            git reset --hard origin/dev
+            git pull origin dev
 
-            # Export IMAGE_TAG so podman-compose can see it
             export IMAGE_TAG=${IMAGE_TAG}
 
-            # Stop old containers (pod-safe)
+            # Stop stack cleanly
             podman-compose down
 
-            # Build new image with versioned tag
+            # Build images with versioned tag
             podman-compose build
 
-            # Optional alias for quick rollback
-            podman tag laravel-app:${IMAGE_TAG} laravel-app:dev-latest
-
-            # Start containers with the new image
+            # Start stack
             podman-compose up -d
 
-            echo "✅ Deployment completed"
+            # Optional health check
+            podman ps
           EOF

@@ -1,4 +1,4 @@
-name: Docker Build & Deploy to TEST
+name: Deploy to TEST (Docker)
 
 on:
   push:
@@ -6,34 +6,44 @@ on:
       - dev
 
 jobs:
-  deploy-test:
+  deploy:
     runs-on: self-hosted
 
     steps:
-      - name: Deploy on TEST server
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy Docker app to TEST (versioned images)
         run: |
-          ssh root@192.168.1.144 << 'EOF'
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          IMAGE_TAG="dev-${SHORT_SHA}"
+
+          ssh root@${{ secrets.TEST_SERVER_IP }} << EOF
             set -e
 
-            echo "🚀 Deploying DEV to TEST"
+            echo "🚀 Deploying IMAGE_TAG=${IMAGE_TAG}"
 
             cd /var/www/current
 
+            # Ensure clean git state (no drift)
             git fetch origin
             git checkout dev
             git reset --hard origin/dev
 
-            IMAGE_TAG=dev-$(git rev-parse --short HEAD)
+            # Export IMAGE_TAG so podman-compose can see it
+            export IMAGE_TAG=${IMAGE_TAG}
 
+            # Stop old containers (pod-safe)
+            podman-compose down
 
-            podman build -t laravel-app:${IMAGE_TAG} .
+            # Build new image with versioned tag
+            podman-compose build
 
-            podman run -d \
-              --replace \
-              --name laravel_app \
-              --env-file /var/www/current/.env \
-              -p 8080:80 \
-              laravel-app:${IMAGE_TAG}
+            # Optional alias for quick rollback
+            podman tag laravel-app:${IMAGE_TAG} laravel-app:dev-latest
 
-            echo "✅ TEST deployment completed"
+            # Start containers with the new image
+            podman-compose up -d
+
+            echo "✅ Deployment completed"
           EOF

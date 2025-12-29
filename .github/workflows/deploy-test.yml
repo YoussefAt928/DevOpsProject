@@ -1,4 +1,4 @@
-name: Deploy to TEST (Docker)
+name: Deploy to TEST
 
 on:
   push:
@@ -6,39 +6,32 @@ on:
       - dev
 
 jobs:
-  deploy:
+  deploy-test:
     runs-on: self-hosted
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy to TEST using Podman Compose
+      - name: Deploy to TEST server
         run: |
-          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          IMAGE_TAG="dev-${SHORT_SHA}"
-
-          ssh root@${{ secrets.TEST_SERVER_IP }} "bash -s" << EOF
+          ssh root@192.168.1.144 << 'EOF'
             set -e
 
-            echo "🚀 Deploying IMAGE_TAG=${IMAGE_TAG}"
-            cd /var/www/current
+            echo "🚀 Deploying to TEST server"
+
+            cd /var/www/current || exit 1
 
             git fetch origin
             git checkout dev
             git pull origin dev
 
-            export IMAGE_TAG=${IMAGE_TAG}
+            composer install --no-interaction --prefer-dist --optimize-autoloader
 
-            # Stop stack cleanly
-            podman-compose down
+            php artisan migrate --force
+            php artisan config:clear
+            php artisan config:cache
+            php artisan route:cache
 
-            # Build images with versioned tag
-            podman-compose build
-
-            # Start stack
-            podman-compose up -d
-
-            # Optional health check
-            podman ps
+            echo "✅ TEST deployment finished"
           EOF

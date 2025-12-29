@@ -18,20 +18,27 @@ jobs:
           ssh root@192.168.1.144 << 'EOF'
             set -e
 
-            echo "🚀 Deploying to TEST server"
+            echo "🚀 Deploying to TEST server (Podman Mode)"
 
             cd /var/www/current || exit 1
 
+            # 1. Force the code to match GitHub (fixes the merge conflict error)
             git fetch origin
-            git checkout dev
-            git pull origin dev
+            git reset --hard origin/dev
 
-            composer install --no-interaction --prefer-dist --optimize-autoloader
+            # 2. Fix the permissions immediately (fixes the session/cache error)
+            mkdir -p storage/framework/{sessions,views,cache} bootstrap/cache
+            chown -R 33:33 storage bootstrap/cache
+            chmod -R 775 storage bootstrap/cache
 
-            php artisan migrate --force
-            php artisan config:clear
-            php artisan config:cache
-            php artisan route:cache
+            # 3. Run Artisan commands INSIDE the container
+            # We use 'podman exec' to talk to the app container
+            podman exec laravel_app php artisan config:clear
+            podman exec laravel_app php artisan config:cache
+            podman exec laravel_app php artisan route:cache
+            
+            # Only run migration if your DB_HOST in .env is already fixed to the VM IP!
+            podman exec laravel_app php artisan migrate --force
 
             echo "✅ TEST deployment finished"
-          EOF
+        EOF
